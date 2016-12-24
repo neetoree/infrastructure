@@ -1,0 +1,89 @@
+#cloud-config
+
+hostname: "$member_host.$cluster_domain"
+
+ssh_authorized_keys:
+    - $cluster_ssh
+
+coreos:
+    etcd2:
+        advertise-client-urls: "http://127.0.0.1:2379"
+        initial-advertise-peer-urls: "http://$member_ip:2380"
+        listen-client-urls: "http://127.0.0.1:2379,http://127.0.0.1:4001"
+        listen-peer-urls: "http://$member_ip:2380,http://$member_ip:7001"
+        name: "$member_host"
+        initial-cluster: "$cluster_etcdhosts"
+        cert-file: "/etc/ssl/etcd/member.crt"
+        key-file: "/etc/ssl/etcd/member.key"
+        client-cert-auth: true
+        trusted-ca-file: "/etc/ssl/etcd/ca.crt"
+        peer-cert-file: "/etc/ssl/etcd/member.crt"
+        peer-key-file: "/etc/ssl/etcd/member.key"
+        peer-client-cert-auth: true
+        peer-trusted-ca-file: "/etc/ssl/etcd/ca.crt"
+
+    flannel:
+        etcd_endpoints: "http://127.0.0.1:4001"
+        etcd_cafile: "/etc/ssl/etcd/ca.crt"
+        etcd_certfile: "/etc/ssl/etcd/member.crt"
+        etcd_keyfile: "/etc/ssl/etcd/member.key"
+        public_ip: "$member_ip"
+
+    units:
+        - name: "etcd2.service"
+          enable: true
+          command: "start"
+        - name: "flanneld.service"
+          enable: true
+          command: "start"
+          drop-ins:
+              - name: "50-network-config.conf"
+                content: |
+                    [Service]
+                    ExecStartPre=/usr/bin/etcdctl set /coreos.com/network/config '{ "Network": "10.20.0.0/16" }'
+        - name: "alldns.network"
+          enable: true
+          command: "start"
+          content: |
+              [Match]
+              Name=*
+              [Network]
+              DNS=127.0.0.1
+              DNS=8.8.8.8
+              Domains=$cluster_domain
+        - name: "container-bootstrap.service"
+          enable: false
+          command: "start"
+          content: |
+              [Unit]
+              Description=container-bootstrap
+              After=etcd2.service
+              [Service]
+              Type=oneshot
+              ExecStart=/usr/bin/docker run --restart=always --net host --name skydns -d -p 53:53/udp -p 127.0.0.1:8080:8080 neetoree.org/skydns -addr 0.0.0.0:53 -machines http://127.0.0.1:4001 -verbose -domain $cluster_domain -nameservers 8.8.8.8:53
+              ExecStart=/usr/bin/docker run --restart=always --net host --name registrator -d --volume=/var/run/docker.sock:/tmp/docker.sock gliderlabs/registrator:latest -ip $member_ip skydns2://127.0.0.1:4001/org/neetoree/$member_host
+        - name: "docker.service"
+          drop-ins:
+              - name: 50-dns-search.conf
+                content: |
+                    [Service]
+                    Environment='DOCKER_OPTS=--dns-search=$cluster_domain --dns=$member_ip'
+write_files:
+    - path: "/etc/ssl/etcd/ca.crt"
+      permissions: "0644"
+      owner: "etcd"
+      encoding: "gz"
+      content: !!binary |
+        $cluster_ca
+    - path: "/etc/ssl/etcd/member.crt"
+      permissions: "0644"
+      owner: "etcd"
+      encoding: "gz"
+      content: !!binary |
+        $member_cert
+    - path: "/etc/ssl/etcd/member.key"
+      permissions: "0600"
+      owner: "etcd"
+      encoding: "gz"
+      content: !!binary |
+        $member_key

@@ -1,0 +1,12 @@
+{
+    "CN": "$member_host.$cluster_domain",
+    "hosts": [
+        "$member_ip",
+        "$member_host.$cluster_domain"
+    ],
+    "key": {
+        "algo": "ecdsa",
+        "size": 256
+    }
+}
+
