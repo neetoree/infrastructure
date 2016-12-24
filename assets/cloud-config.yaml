@@ -51,6 +51,9 @@ coreos:
               DNS=127.0.0.1
               DNS=8.8.8.8
               Domains=$cluster_domain
+              DHCP=yes
+              [DHCP]
+              UseDNS=false
         - name: "container-bootstrap.service"
           enable: false
           command: "start"
@@ -60,8 +63,8 @@ coreos:
               After=etcd2.service
               [Service]
               Type=oneshot
-              ExecStart=/usr/bin/docker run --restart=always --net host --name skydns -d -p 53:53/udp -p 127.0.0.1:8080:8080 neetoree.org/skydns -addr 0.0.0.0:53 -machines http://127.0.0.1:4001 -verbose -domain $cluster_domain -nameservers 8.8.8.8:53
-              ExecStart=/usr/bin/docker run --restart=always --net host --name registrator -d --volume=/var/run/docker.sock:/tmp/docker.sock gliderlabs/registrator:latest -ip $member_ip skydns2://127.0.0.1:4001/org/neetoree/$member_host
+              ExecStart=/usr/bin/docker run --restart=always --net host --name skydns -d -e SERVICE_ID=skydns -p 53:53/udp -p 127.0.0.1:8080:8080 neetoree.org/skydns -addr 0.0.0.0:53 -machines http://127.0.0.1:4001 -verbose -domain $cluster_domain -nameservers 8.8.8.8:53
+              ExecStart=/usr/bin/docker run --restart=always --net host --name registrator -d -e SERVICE_ID=registrator --volume=/var/run/docker.sock:/tmp/docker.sock gliderlabs/registrator:latest -ip $member_ip skydns2://127.0.0.1:4001/$cluster_path/$member_host
         - name: "docker.service"
           drop-ins:
               - name: 50-dns-search.conf

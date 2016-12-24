@@ -23,7 +23,7 @@ mkdirs:
 	mkdir -p bin keys members configs
 
 clean:
-	rm -fr keys configs
+	rm -fr keys/* configs/*
 
 dist-clean:
 	rm -fr bin keys members configs
